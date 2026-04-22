@@ -1,4 +1,7 @@
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Random;
 import java.util.Scanner;
 
 class Game {
@@ -9,13 +12,16 @@ class Game {
     int floor = 1;
     MoonCycle moonCycle = new MoonCycle();
     HashMap<String, Enemy> enemyDB;
+    HashMap<String, Item> chestItemDB;
 
     Map map;
     Scanner sc = new Scanner(System.in);
 
     public Game() {
         this.enemyDB = EnemyLoader.loadEnemies("enemylist.csv");
+        this.chestItemDB = ItemLoader.loadItems("ChestItems.csv");
         this.map = new Map(playerX, playerY, enemyDB);
+        this.map.spawnChests(3);
         this.sc = new Scanner(System.in);
     }
 
@@ -69,6 +75,10 @@ class Game {
                 move(input);
             }
 
+            if (map.isChest(playerX, playerY)) {
+                handleChest();
+            }
+
             // Check if player died during move/battle
             if (!player.isAlive()) {
                 // This happens if startBattle returned false (Player chose "Try Again")
@@ -111,6 +121,7 @@ class Game {
         playerY = 5;
 
         map = new Map(playerX, playerY, enemyDB);
+        map.spawnChests(3);
     }
 
     private void clearScreen() {
@@ -250,6 +261,7 @@ class Game {
         this.floor = 1;
         this.moonCycle = new MoonCycle(); // Reset moon phases
         this.map = new Map(playerX, playerY, enemyDB); // Fresh map generation
+        this.map.spawnChests(3);
         initializePlayer(); // Let them re-allocate their starting level 5 points
     }
 
@@ -272,7 +284,7 @@ class Game {
         String choice = sc.nextLine();
         switch (choice) {
             case "1": showDetailedStatus(); break;
-            case "2": System.out.println("\nInventory is empty..."); pause(); break;
+            case "2": openInventoryMenu(); break;
             case "3": inMenu = false; break;
         }
     }
@@ -292,10 +304,74 @@ class Game {
         System.out.println(" EXP: " + player.exp + " / 100");
         System.out.println("\nPress Enter to return...");
         sc.nextLine();
-    }
+    }   
 
     private void pause() {
         System.out.println("Press Enter to continue...");
         sc.nextLine();
+        }
+
+    private void handleChest() {
+        System.out.println("\n*** YOU FOUND A TREASURE CHEST! ***");
+
+        // 1. Convert the HashMap values to a List so we can pick by index
+        List<Item> possibleLoot = new ArrayList<>(chestItemDB.values());
+    
+        // 2. Pick a random item
+        Item foundItem = possibleLoot.get(new Random().nextInt(possibleLoot.size()));
+
+        // 3. Give to player
+        player.inventory.add(foundItem);
+
+        System.out.println("Obtained: " + foundItem.name);
+        System.out.println(">> " + foundItem.description);
+
+        // 4. IMPORTANT: Remove the chest so you can't loot it twice!
+        map.clearTile(playerX, playerY);
+
+        System.out.println("\nPress Enter to continue...");
+        sc.nextLine();
     }
+
+    private void openInventoryMenu() {
+        boolean inInventory = true;
+        while (inInventory) {
+            clearScreen();
+            System.out.println("========================================");
+            System.out.println("             INVENTORY");
+            System.out.println("========================================");
+        
+            if (player.inventory.isEmpty()) {
+                System.out.println(" Your inventory is empty.");
+                System.out.println("\n 0. Back");
+            } else {
+                for (int i = 0; i < player.inventory.size(); i++) {
+                    Item item = player.inventory.get(i);
+                    System.out.println(String.format(" %d. %-15s | %s", (i + 1), item.name, item.description));
+                }
+                System.out.println("\n 0. Back");
+            }
+
+            System.out.print("\nSelect an item to use: ");
+            String choice = sc.nextLine();
+
+            if (choice.equals("0")) {
+                inInventory = false;
+            } else {
+                try {
+                    int index = Integer.parseInt(choice) - 1;
+                    if (index >= 0 && index < player.inventory.size()) {
+                        Item selectedItem = player.inventory.get(index);
+                        player.useItem(selectedItem); // This calls the logic we put in Player.java
+                        pause(); 
+                    }
+                } catch (NumberFormatException e) {
+                    System.out.println("Invalid input.");
+                    pause();
+                }
+            }
+        }
+    }
+
+
 }

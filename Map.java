@@ -142,6 +142,7 @@ class Map {
 }
     // Inside Map.java
     public void spawnChests(int count) {
+        int spawned = 0;
         for (int i = 0; i < count; i++) {
             int rx = rand.nextInt(size);
             int ry = rand.nextInt(size);
@@ -159,6 +160,5 @@ class Map {
     public void clearTile(int x, int y) {
         grid[y][x] = '.';
     }
-
     
 }

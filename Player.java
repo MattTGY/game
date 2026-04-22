@@ -3,18 +3,9 @@ import java.util.ArrayList;
 public class Player {
     public int level;
     public int strength, magic, vitality, agility, luck, macca, exp;
-    public int currentHp, currentSp;
+    public int currentHp, maxHp, currentSp, maxSp;
     public ArrayList<Item> inventory = new ArrayList<>();
 
-    // Helper to use an item
-    public void useItem(Item item) {
-        if (item.type.equals("HealHP")) {
-            this.currentHp = Math.min(getMaxHp(), this.currentHp + item.value);
-        } else if (item.type.equals("HealSP")) {
-            this.currentSp = Math.min(getMaxSp(), this.currentSp + item.value);
-        }
-        inventory.remove(item);
-    }
 
     public Player() {
         this.level = 5;
@@ -70,4 +61,43 @@ public class Player {
     boolean isAlive() {
         return this.currentHp > 0;
     }
+
+    private void handleStatBoost(Item item) {
+        if (item.name.contains("Str")) {
+            this.strength += item.value;
+            System.out.println("Strength increased to " + this.strength + "!");
+        } else if (item.name.contains("Vit")) {
+            this.vitality += item.value;
+            // In SMT, Vitality usually increases Max HP too!
+            this.maxHp += (item.value * 5); 
+            System.out.println("Vitality increased! Max HP is now " + this.maxHp);
+        }
+    }
+
+        // Helper to use an item
+    public void useItem(Item item) {
+        switch (item.type) {
+        case "HealHP":
+            int max = getMaxHp();
+            this.currentHp = Math.min(max, this.currentHp + item.value);
+            System.out.println("Used " + item.name + ". Restored " + item.value + " HP!");
+            break;
+            
+        case "HealSP":
+            this.currentSp = Math.min(this.maxSp, this.currentSp + item.value);
+            System.out.println("Used " + item.name + ". Restored " + item.value + " SP!");
+            break;
+
+        case "Stat":
+            handleStatBoost(item);
+            break;
+
+        default:
+            System.out.println("This item cannot be used right now.");
+            return; // Don't remove the item if it wasn't used
+    }
+    // Remove the item after successful use
+    inventory.remove(item);
+    }
+
 }
