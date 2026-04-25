@@ -1,3 +1,4 @@
+import java.io.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -5,7 +6,6 @@ import java.util.Random;
 import java.util.Scanner;
 
 class Game {
-    //tw
     Player player = new Player();
     int playerX = 5;
     int playerY = 5;
@@ -22,356 +22,287 @@ class Game {
         this.chestItemDB = ItemLoader.loadItems("ChestItems.csv");
         this.map = new Map(playerX, playerY, enemyDB);
         this.map.spawnChests(3);
-        this.sc = new Scanner(System.in);
     }
 
     public void initializePlayer() {
-        int bonusPoints = 5; // Give them 5 extra points to start
-    
+        clearScreen();
+        System.out.println("--- WELCOME TO THE LABYRINTH ---");
+        System.out.print("Load previous save? (y/n): ");
+        if (sc.nextLine().toLowerCase().equals("y")) {
+            loadGame();
+            return; 
+        }
+
+        int bonusPoints = 5;
         while (bonusPoints > 0) {
             clearScreen();
             System.out.println("--- CHARACTER CREATION ---");
-            System.out.println("Level: " + player.level);
             System.out.println("Points remaining: " + bonusPoints);
             System.out.println("1. Strength: " + player.strength);
-            System.out.println("2. Magic:    " + player.magic);
-            System.out.println("3. Vitality: " + player.vitality);
-            System.out.println("4. Agility:  " + player.agility);
-            System.out.println("5. Luck:     " + player.luck);
-            System.out.print("Select a stat to increase (1-5): ");
-        
+            System.out.println("2. Vitality: " + player.vitality);
+            System.out.println("3. Luck:     " + player.luck);
+            System.out.print("Select stat (1-3): ");
+
             try {
                 int choice = Integer.parseInt(sc.nextLine());
-                if (choice >= 1 && choice <= 5) {
-                player.addStat(choice);
-                bonusPoints--;
+                if (choice >= 1 && choice <= 3) {
+                    player.addStat(choice);
+                    bonusPoints--;
                 }
-            } catch (Exception e) {
-                System.out.println("Invalid input!");
-            }
+            } catch (Exception e) { System.out.println("Invalid input!"); }
         }
-        // Set initial HP/SP to full after stats are finalized
         player.currentHp = player.getMaxHp();
-        player.currentSp = player.getMaxSp();
     }
 
     public void start() {
         initializePlayer();
-
         while (true) {
-
             clearScreen();
-
             System.out.println("Floor: " + floor + " | Macca: " + player.macca);
             System.out.println("Moon: " + moonCycle.getCurrentPhase());
             map.draw(playerX, playerY);
-
             System.out.print("Move (WASD) or open (M)enu: ");
             String input = sc.nextLine().toLowerCase();
+            if (input.equals("m")) openMainMenu();
+            else move(input);
 
-            if(input.equals("m")){
-                openMainMenu();
-            }else{
-                move(input);
-            }
-
-            if (map.isChest(playerX, playerY)) {
-                handleChest();
-            }
-
-            // Check if player died during move/battle
-            if (!player.isAlive()) {
-                // This happens if startBattle returned false (Player chose "Try Again")
-                resetGame();
-                continue; 
-            }
-
-            if (map.isExit(playerX, playerY)) {
-                nextFloor();
-            }
+            if (!player.isAlive()) { resetGame(); continue; }
+            if (map.isExit(playerX, playerY)) nextFloor();
         }
     }
 
     private void move(String input) {
         boolean moved = false;
-
         switch (input) {
-        case "w": if (playerY > 0) { playerY--; moved = true; } break;
-        case "s": if (playerY < 9) { playerY++; moved = true; } break;
-        case "a": if (playerX > 0) { playerX--; moved = true; } break;
-        case "d": if (playerX < 9) { playerX++; moved = true; } break;
-    }
-
-    if (moved) {
-        moonCycle.playerMoved();
-    }
-
-        Enemy enemy = map.getEnemyAt(playerX, playerY);
-        if (enemy != null) {
-            startBattle(enemy);
+            case "w": if (playerY > 0) { playerY--; moved = true; } break;
+            case "s": if (playerY < 9) { playerY++; moved = true; } break;
+            case "a": if (playerX > 0) { playerX--; moved = true; } break;
+            case "d": if (playerX < 9) { playerX++; moved = true; } break;
         }
-
+        if (moved) {
+            moonCycle.playerMoved();
+            Enemy enemy = map.getEnemyAt(playerX, playerY);
+            if (enemy != null) startBattle(enemy);
+        }
     }
 
-    private void nextFloor() {
-        System.out.println("You found the exit!\n");
+    private void startBattle(Enemy enemy) {
+        int scalingTier = floor / 2; 
+        int enemyMaxHP = ((1 + enemy.vitality) * 6) + (scalingTier * 20);
+        int enemyCurrentHP = enemyMaxHP;
+        int scaledStr = enemy.strength + (scalingTier * 2);
 
-        floor++;
-        playerX = 5;
-        playerY = 5;
+        enemy.burnTicks = 0;
+        enemy.skipTicks = 0;
 
-        map = new Map(playerX, playerY, enemyDB);
-        map.spawnChests(3);
-    }
+        while (enemyCurrentHP > 0 && player.isAlive()) {
+            clearScreen();
+            System.out.println("BATTLE: " + enemy.name + " | FLOOR: " + floor);
+            System.out.println(String.format("%-20s HP: %d/%d", enemy.name, enemyCurrentHP, enemyMaxHP));
+            System.out.println(String.format("%-20s HP: %d/%d", "PLAYER", player.currentHp, player.getMaxHp()));
+            System.out.println("----------------------------------------");
+            System.out.println("1. Attack  2. Magic  3. Items  4. Talk");
+            System.out.print("Action: ");
 
-    private void clearScreen() {
-        System.out.print("\033[H\033[2J");
-        System.out.flush();
-    }
+            String choice = sc.nextLine();
+            if (choice.equals("1")) {
+                int damage = (player.level + player.strength) * 40 / 15;
+                enemyCurrentHP -= damage;
+                System.out.println("> You hit for " + damage + "!");
+            } else if (choice.equals("2")) {
+                Item card = selectSkillCard();
+                if (card != null) {
+                    enemyCurrentHP -= card.value;
+                    if (card.name.toLowerCase().contains("agi")) enemy.burnTicks = 3;
+                    if (card.name.toLowerCase().contains("zio") || card.name.toLowerCase().contains("bufu")) enemy.skipTicks = 1;
+                    player.inventory.remove(card);
+                } else continue;
+            } else if (choice.equals("3")) {
+                if (handleInBattleHealing()) continue;
+            } else if (choice.equals("4")) {
+                if (handleNegotiation(enemy)) return;
+            } else continue;
 
-    private boolean startBattle(Enemy enemy) {
-        // Enemy HP using your formula: (Lvl + Vit) * 6
-    // Assuming level 1 for basic enemies for now
-    int enemyMaxHP = (1 + enemy.vitality) * 6;
-    int enemyCurrentHP = enemyMaxHP;
+            if (enemyCurrentHP <= 0) break;
 
-    while (enemyCurrentHP > 0 && player.isAlive()) {
-        clearScreen();
-        
-        // --- BATTLE UI ---
-        System.out.println("========================================");
-        System.out.println("            BATTLE: " + enemy.name);
-        System.out.println("========================================");
-        System.out.println(String.format("  %-20s HP: %d/%d", enemy.name, enemyCurrentHP, enemyMaxHP));
-        System.out.println("\n");
-        System.out.println(String.format("  %-20s HP: %d/%d  SP: %d/%d", "PLAYER", player.currentHp, player.getMaxHp(), player.currentSp, player.getMaxSp()));
-        System.out.println("========================================");
-        System.out.println("  1. Attack    2. Magic    3. Items   4.Talk");
-        System.out.println("========================================");
-        System.out.print("Choose an action: ");
+            // ENEMY TURN
+            if (enemy.burnTicks > 0) {
+                enemyCurrentHP -= 10;
+                System.out.println(">> Burn damage: -10");
+                enemy.burnTicks--;
+                if (enemyCurrentHP <= 0) break;
+            }
 
-        String choice = sc.nextLine();
-        
-        // --- PLAYER TURN ---
-        if (choice.equals("1")) {
-            // Physical Formula: (Lvl + Str) * Power / 15 (Using Power 40 for Lunge)
-            int damage = (player.level + player.strength) * 40 / 15;
-            enemyCurrentHP -= damage;
-            System.out.println("\n> You lunged at " + enemy.name + " for " + damage + " damage!");
-        } else if (choice.equals("2")) {
-            System.out.println("\n> You haven't learned any skills yet!");
-            continue; // Skip to next iteration without taking an enemy hit
-        }else if (choice.equals("3")) {
-    
-            System.out.println("> You have no items to use!");
+            if (enemy.skipTicks > 0) {
+                System.out.println(">> " + enemy.name + " is stunned!");
+                enemy.skipTicks--;
+            } else {
+                int enemyDamage = (1 + scaledStr) * 40 / 15;
+                player.takeDamage(enemyDamage);
+                System.out.println("> " + enemy.name + " deals " + enemyDamage + " damage!");
+            }
             pause();
-            continue; // Don't let the enemy attack if you just looked at an empty bag
-        } else if (choice.equals("4")) {
-            System.out.println("\n> " + enemy.name + " stares at you intensely...");
-            // Negotiation logic goes here later!
-        } else {
-            System.out.println("\n> Invalid command!");
-            continue;
         }
-
-        if (enemyCurrentHP <= 0) break;
-
-        // --- ENEMY TURN ---
-        // Enemy Physical Formula: (Lvl + Str) * Power / 15
-        int enemyDamage = (1 + enemy.strength) * 40 / 15;
-        player.takeDamage(enemyDamage);
-        System.out.println("> " + enemy.name + " attacks! You took " + enemyDamage + " damage.");
-        
-        System.out.println("\nPress Enter to continue...");
-        sc.nextLine();
+        handleBattleEnd(enemy);
     }
 
-        // --- POST BATTLE ---
-        if (player.isAlive()) {
-            // Reward calculation based on enemy stats
-            int gainedExp = (enemy.strength + enemy.vitality) * 2;
-            int gainedMacca = (enemy.luck + enemy.agility) * 10;
+    private boolean handleInBattleHealing() {
+        List<Item> heals = new ArrayList<>();
+        for (Item i : player.inventory) if (i.type.equals("HealHP")) heals.add(i);
+        if (heals.isEmpty()) { System.out.println("> No healing items!"); pause(); return true; }
 
-            player.exp += gainedExp;
-            player.macca += gainedMacca;
+        System.out.println("--- USE ITEM ---");
+        for (int i = 0; i < heals.size(); i++) System.out.println((i+1) + ". " + heals.get(i).name);
+        System.out.print("Choice (0 for Back): ");
+        try {
+            int h = Integer.parseInt(sc.nextLine());
+            if (h == 0) return true;
+            player.useItem(heals.get(h - 1));
+            pause();
+            return false; 
+        } catch (Exception e) { return true; }
+    }
 
-            System.out.println("\nVictory!");
-            System.out.println("Gained " + gainedExp + " EXP and " + gainedMacca + " Macca.");
-
-            // Check for Level Up
-            while (player.exp >= 100) {
-            player.exp -= 100;
-                handleLevelUpMenu();
-            }
-
-            map.removeEnemy(playerX, playerY);
-            System.out.println("Press Enter to return to map...");
-            sc.nextLine();
-            return true;
-            }else{
-                clearScreen();
-                System.out.println("========================================");
-                System.out.println("           YOU ARE DEAD");
-                System.out.println("========================================");
-                System.out.println("Your journey has reached its end...");
-                System.out.println("\n1. Try Again");
-                System.out.println("2. Quit");
-                System.out.print("\nChoice: ");
+    private boolean handleNegotiation(Enemy enemy) {
+        MoonCycle.Phase ph = moonCycle.getCurrentPhase();
         
-                String choice = sc.nextLine();
-                return !choice.equals("1"); // Returns false if they want to play again
-            }
+        if (ph == MoonCycle.Phase.FULL) { 
+            System.out.println("> The enemy is blinded by moon-rage! They won't talk!"); 
+            pause(); 
+            return false; 
         }
-
-        private void handleLevelUpMenu() {
-            player.levelUp();
-            boolean pointSpent = false;
-
-            while (!pointSpent) {
-                clearScreen();
-                System.out.println("========================================");
-                System.out.println("            LEVEL UP! (Lv. " + player.level + ")");
-                System.out.println("========================================");
-                System.out.println("Assign 1 Stat Point:");
-                System.out.println("1. St: " + player.strength + " (Physical Damage)");
-                System.out.println("2. Ma: " + player.magic    + " (MP & Magic Power)");
-                System.out.println("3. Vi: " + player.vitality + " (Max HP)");
-                System.out.println("4. Ag: " + player.agility  + " (Accuracy/Evasion)");
-                System.out.println("5. Lu: " + player.luck     + " (Magic Evasion/Recovery)");
-                System.out.print("\nChoice: ");
-
-                try {
-                    int choice = Integer.parseInt(sc.nextLine());
-                    if (choice >= 1 && choice <= 5) {
-                        player.addStat(choice);
-                        pointSpent = true;
-                        System.out.println("\nStat point allocated!");
-                        try { Thread.sleep(1000); } catch (Exception e) {}
-                    }
-                } catch (Exception e) {
-                    System.out.println("Invalid choice.");
-                }
-            }
+        if (ph == MoonCycle.Phase.NEW) { 
+            processNegotiationSuccess(enemy); 
+            return true; 
         }
+        
+        int chance = 20 + (player.luck * 2);
+        if (new Random().nextInt(100) < chance) { 
+            processNegotiationSuccess(enemy); 
+            return true; 
+        } else { 
+            System.out.println("> Negotiation failed!"); 
+            pause(); 
+            return false; 
+        }
+    }
 
-    public void resetGame() {
-        this.player = new Player(); // Fresh stats
-        this.playerX = 5;
-        this.playerY = 5;
-        this.floor = 1;
-        this.moonCycle = new MoonCycle(); // Reset moon phases
-        this.map = new Map(playerX, playerY, enemyDB); // Fresh map generation
-        this.map.spawnChests(3);
-        initializePlayer(); // Let them re-allocate their starting level 5 points
+    private void processNegotiationSuccess(Enemy enemy) {
+        List<Item> loot = new ArrayList<>(chestItemDB.values());
+        Item gift = loot.get(new Random().nextInt(loot.size()));
+        player.inventory.add(gift);
+        System.out.println("> Received " + gift.name + "!");
+        map.removeEnemy(playerX, playerY);
+        pause();
+    }
+
+    private void handleBattleEnd(Enemy enemy) {
+        if (player.isAlive()) {
+            int gainedExp = (enemy.strength + enemy.vitality) * 2;
+            int gainedMacca = (enemy.luck * 20); // Balanced to use Luck only
+            player.exp += gainedExp; player.macca += gainedMacca;
+            System.out.println("\nVictory! Gained " + gainedExp + " EXP.");
+            while (player.exp >= 100) { player.exp -= 100; handleLevelUpMenu(); }
+            map.removeEnemy(playerX, playerY);
+            pause();
+        }
+    }
+
+    private void saveGame() {
+        try (PrintWriter writer = new PrintWriter(new FileWriter("savegame.txt"))) {
+            writer.println(floor);
+            writer.println(player.level);
+            writer.println(player.strength);
+            writer.println(player.vitality);
+            writer.println(player.luck);
+            writer.println(player.macca);
+            writer.println(player.exp);
+            System.out.println("Save successful!");
+            pause();
+        } catch (IOException e) { System.out.println("Save failed."); }
+    }
+
+    private void loadGame() {
+        try (Scanner fs = new Scanner(new File("savegame.txt"))) {
+            floor = fs.nextInt();
+            player.level = fs.nextInt();
+            player.strength = fs.nextInt();
+            player.vitality = fs.nextInt();
+            player.luck = fs.nextInt();
+            player.macca = fs.nextInt();
+            player.exp = fs.nextInt();
+            player.currentHp = player.getMaxHp();
+            System.out.println("Load successful!");
+            pause();
+        } catch (Exception e) { System.out.println("No save found."); pause(); }
     }
 
     private void openMainMenu() {
-    boolean inMenu = true;
-    while (inMenu) {
-        clearScreen();
-        System.out.println("========================================");
-        System.out.println("             CAMP MENU");
-        System.out.println("========================================");
-        System.out.println(String.format(" Lv. %-2d  HP: %d/%d  SP: %d/%d", 
-            player.level, player.currentHp, player.getMaxHp(), player.currentSp, player.getMaxSp()));
-        System.out.println(" Macca: " + player.macca);
-        System.out.println("----------------------------------------");
-        System.out.println(" 1. Status (Detailed Stats)");
-        System.out.println(" 2. Inventory (Items)");
-        System.out.println(" 3. Return to Map");
-        System.out.print("\nChoice: ");
-
-        String choice = sc.nextLine();
-        switch (choice) {
-            case "1": showDetailedStatus(); break;
-            case "2": openInventoryMenu(); break;
-            case "3": inMenu = false; break;
+        boolean inMenu = true;
+        while (inMenu) {
+            clearScreen();
+            System.out.println("--- CAMP MENU ---");
+            System.out.println("Floor: " + floor + " | HP: " + player.currentHp + "/" + player.getMaxHp());
+            System.out.println("1. Status  2. Inventory  3. Save  4. Exit");
+            String choice = sc.nextLine();
+            switch (choice) {
+                case "1": showDetailedStatus(); break;
+                case "2": openInventoryMenu(); break;
+                case "3": saveGame(); break;
+                case "4": inMenu = false; break;
+            }
         }
     }
-}
 
     private void showDetailedStatus() {
         clearScreen();
-        System.out.println("========================================");
-        System.out.println("           PLAYER STATUS");
-        System.out.println("========================================");
-        System.out.println(" Strength:  " + player.strength);
-        System.out.println(" Magic:     " + player.magic);
-        System.out.println(" Vitality:  " + player.vitality);
-        System.out.println(" Agility:   " + player.agility);
-        System.out.println(" Luck:      " + player.luck);
-        System.out.println("----------------------------------------");
-        System.out.println(" EXP: " + player.exp + " / 100");
-        System.out.println("\nPress Enter to return...");
-        sc.nextLine();
-    }   
-
-    private void pause() {
-        System.out.println("Press Enter to continue...");
-        sc.nextLine();
-        }
-
-    private void handleChest() {
-        System.out.println("\n*** YOU FOUND A TREASURE CHEST! ***");
-
-        // 1. Convert the HashMap values to a List so we can pick by index
-        List<Item> possibleLoot = new ArrayList<>(chestItemDB.values());
-    
-        // 2. Pick a random item
-        Item foundItem = possibleLoot.get(new Random().nextInt(possibleLoot.size()));
-
-        // 3. Give to player
-        player.inventory.add(foundItem);
-
-        System.out.println("Obtained: " + foundItem.name);
-        System.out.println(">> " + foundItem.description);
-
-        // 4. IMPORTANT: Remove the chest so you can't loot it twice!
-        map.clearTile(playerX, playerY);
-
-        System.out.println("\nPress Enter to continue...");
-        sc.nextLine();
+        System.out.println("--- STATUS ---");
+        System.out.println("St: " + player.strength + " | Vi: " + player.vitality + " | Lu: " + player.luck);
+        System.out.println("EXP: " + player.exp + "/100");
+        pause();
     }
+
+    private void nextFloor() {
+        floor++; playerX = 5; playerY = 5;
+        map = new Map(playerX, playerY, enemyDB);
+        map.spawnChests(3);
+        System.out.println("Descending to Floor " + floor + "...");
+        pause();
+    }
+
+    private void clearScreen() { System.out.print("\033[H\033[2J"); System.out.flush(); }
+    private void pause() { System.out.println("Press Enter..."); sc.nextLine(); }
 
     private void openInventoryMenu() {
-        boolean inInventory = true;
-        while (inInventory) {
-            clearScreen();
-            System.out.println("========================================");
-            System.out.println("             INVENTORY");
-            System.out.println("========================================");
-        
-            if (player.inventory.isEmpty()) {
-                System.out.println(" Your inventory is empty.");
-                System.out.println("\n 0. Back");
-            } else {
-                for (int i = 0; i < player.inventory.size(); i++) {
-                    Item item = player.inventory.get(i);
-                    System.out.println(String.format(" %d. %-15s | %s", (i + 1), item.name, item.description));
-                }
-                System.out.println("\n 0. Back");
-            }
-
-            System.out.print("\nSelect an item to use: ");
-            String choice = sc.nextLine();
-
-            if (choice.equals("0")) {
-                inInventory = false;
-            } else {
-                try {
-                    int index = Integer.parseInt(choice) - 1;
-                    if (index >= 0 && index < player.inventory.size()) {
-                        Item selectedItem = player.inventory.get(index);
-                        player.useItem(selectedItem); // This calls the logic we put in Player.java
-                        pause(); 
-                    }
-                } catch (NumberFormatException e) {
-                    System.out.println("Invalid input.");
-                    pause();
-                }
-            }
-        }
+        clearScreen();
+        for (int i = 0; i < player.inventory.size(); i++) System.out.println((i+1) + ". " + player.inventory.get(i).name);
+        System.out.println("0. Back");
+        try {
+            int c = Integer.parseInt(sc.nextLine()) - 1;
+            if (c != -1) player.useItem(player.inventory.get(c));
+        } catch (Exception e) {}
     }
 
+    private Item selectSkillCard() {
+        List<Item> cards = new ArrayList<>();
+        for (Item i : player.inventory) if (i.type.equals("Skill")) cards.add(i);
+        if (cards.isEmpty()) { System.out.println("No skill cards!"); pause(); return null; }
+        for (int i = 0; i < cards.size(); i++) System.out.println((i+1) + ". " + cards.get(i).name);
+        try { return cards.get(Integer.parseInt(sc.nextLine()) - 1); } catch (Exception e) { return null; }
+    }
 
+    private void handleLevelUpMenu() {
+        player.levelUp();
+        System.out.println("Level Up! Level " + player.level);
+        System.out.println("1. St  2. Vi  3. Lu");
+        try { player.addStat(Integer.parseInt(sc.nextLine())); } catch (Exception e) {}
+    }
+
+    private void resetGame() {
+        System.out.println("GAME OVER");
+        player = new Player(); floor = 1;
+        playerX = 5; playerY = 5;
+        map = new Map(playerX, playerY, enemyDB);
+        initializePlayer();
+    }
 }

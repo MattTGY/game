@@ -2,6 +2,8 @@ public class Enemy {
     public int x, y; // position on map
     public String name;
     public int strength, magic, vitality, agility, luck;
+    public int burnTicks = 0;
+    public int skipTicks = 0;
 
     // Constructor from CSV / stats
     public Enemy(String name, int strength, int magic, int vitality, int agility, int luck) {
